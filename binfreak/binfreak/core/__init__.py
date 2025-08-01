@@ -1,7 +1,7 @@
 """
-Core module initialization
+BinFreak Core Module - Essential core functionality
 """
 
-from .license_manager import LicenseManager, RegistrationDialog, LicenseStatusDialog
+from .license_manager import SimpleLicenseManager, LicenseManager
 
-__all__ = ['LicenseManager', 'RegistrationDialog', 'LicenseStatusDialog']
+__all__ = ['SimpleLicenseManager', 'LicenseManager']
