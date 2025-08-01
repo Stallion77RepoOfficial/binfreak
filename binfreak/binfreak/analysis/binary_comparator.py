@@ -1,26 +1,29 @@
 """
-Binary Comparison Engine - Compare and diff binary files
+Professional Binary Comparison Engine - Advanced differential analysis
 """
 
 import os
 import hashlib
 import difflib
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple, Optional, Set
 from datetime import datetime
+from collections import defaultdict
 
 
 class BinaryComparator:
-    """Binary file comparison and diffing engine"""
+    """Professional binary file comparison and differential analysis engine"""
     
     def __init__(self):
         self.comparison_cache = {}
     
-    def compare_files(self, file1_path: str, file2_path: str) -> Dict[str, Any]:
-        """Compare two binary files and return detailed comparison results"""
+    def compare_files(self, file1_path: str, file2_path: str, options: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Enhanced binary file comparison with professional analysis"""
+        options = options or {}
+        
         try:
             # Create comparison key for caching
             comparison_key = f"{file1_path}::{file2_path}"
-            if comparison_key in self.comparison_cache:
+            if comparison_key in self.comparison_cache and not options.get('force_refresh', False):
                 return self.comparison_cache[comparison_key]
             
             start_time = datetime.now()
@@ -30,29 +33,64 @@ class BinaryComparator:
                 data1 = f1.read()
                 data2 = f2.read()
             
-            # Basic file information
-            file1_info = self._get_file_info(file1_path, data1)
-            file2_info = self._get_file_info(file2_path, data2)
-            
-            # Perform various comparison analyses
-            hash_comparison = self._compare_hashes(data1, data2)
-            size_comparison = self._compare_sizes(data1, data2)
-            byte_differences = self._find_byte_differences(data1, data2)
-            structural_comparison = self._compare_structure(data1, data2)
-            similarity_score = self._calculate_similarity(data1, data2)
-            
-            # Function-level comparison (if available)
-            function_comparison = self._compare_functions(data1, data2, file1_info, file2_info)
-            
-            # String comparison
-            string_comparison = self._compare_strings(data1, data2)
-            
-            end_time = datetime.now()
-            comparison_time = (end_time - start_time).total_seconds()
-            
+            # Comprehensive comparison analysis
             result = {
-                'file1': file1_info,
-                'file2': file2_info,
+                'file1_info': self._get_file_info(file1_path, data1),
+                'file2_info': self._get_file_info(file2_path, data2),
+                'basic_comparison': self._basic_comparison(data1, data2),
+                'structural_comparison': self._structural_comparison(data1, data2),
+                'function_comparison': self._enhanced_function_comparison(data1, data2),
+                'string_comparison': self._enhanced_string_comparison(data1, data2),
+                'entropy_comparison': self._entropy_comparison(data1, data2),
+                'binary_diff': self._enhanced_binary_diff(data1, data2, options),
+                'similarity_metrics': self._calculate_similarity_metrics(data1, data2),
+                'format_comparison': self._format_comparison(data1, data2),
+                'section_comparison': self._section_comparison(data1, data2),
+                'security_comparison': self._security_analysis_comparison(data1, data2),
+                'analysis_metadata': {
+                    'comparison_time': (datetime.now() - start_time).total_seconds(),
+                    'analysis_date': datetime.now().isoformat(),
+                    'options_used': options
+                }
+            }
+            
+            # Cache result
+            self.comparison_cache[comparison_key] = result
+            return result
+            
+        except Exception as e:
+            return {'error': f'Comparison failed: {str(e)}', 'timestamp': datetime.now().isoformat()}
+    
+    def _basic_comparison(self, data1: bytes, data2: bytes) -> Dict[str, Any]:
+        """Enhanced basic comparison with multiple hash algorithms"""
+        return {
+            'identical': data1 == data2,
+            'size_difference': len(data2) - len(data1),
+            'size_ratio': len(data2) / len(data1) if len(data1) > 0 else float('inf'),
+            'hashes': {
+                'md5_1': hashlib.md5(data1).hexdigest(),
+                'md5_2': hashlib.md5(data2).hexdigest(),
+                'sha1_1': hashlib.sha1(data1).hexdigest(),
+                'sha1_2': hashlib.sha1(data2).hexdigest(),
+                'sha256_1': hashlib.sha256(data1).hexdigest(),
+                'sha256_2': hashlib.sha256(data2).hexdigest(),
+            },
+            'hash_matches': {
+                'md5': hashlib.md5(data1).hexdigest() == hashlib.md5(data2).hexdigest(),
+                'sha1': hashlib.sha1(data1).hexdigest() == hashlib.sha1(data2).hexdigest(),
+                'sha256': hashlib.sha256(data1).hexdigest() == hashlib.sha256(data2).hexdigest(),
+            }
+        }
+    
+    def _get_file_info(self, file_path: str, data: bytes) -> Dict[str, Any]:
+        """Get basic file information"""
+        return {
+            'path': file_path,
+            'name': os.path.basename(file_path),
+            'size': len(data),
+            'md5': hashlib.md5(data).hexdigest(),
+            'sha256': hashlib.sha256(data).hexdigest()
+        }
                 'hash_comparison': hash_comparison,
                 'size_comparison': size_comparison,
                 'similarity_score': similarity_score,
