@@ -16,6 +16,18 @@ class BinaryAnalysisEngine:
     
     def __init__(self):
         self.analysis_cache = {}
+        self.plugin_manager = None
+        self._initialize_plugins()
+    
+    def _initialize_plugins(self):
+        """Initialize the plugin system"""
+        try:
+            from ..plugins.plugin_manager import PluginManager
+            self.plugin_manager = PluginManager()
+            self.plugin_manager.load_all_plugins()
+        except Exception as e:
+            print(f"Plugin system initialization failed: {e}")
+            self.plugin_manager = None
     
     def analyze_file(self, file_path: str) -> Dict[str, Any]:
         """Comprehensive binary file analysis"""
@@ -86,6 +98,18 @@ class BinaryAnalysisEngine:
                     'format_type': file_format.get('type', 'Unknown')
                 }
             }
+            
+            # Run plugin analysis if available
+            if self.plugin_manager:
+                try:
+                    plugin_results = self.plugin_manager.run_analysis_plugins(data, {
+                        'path': file_path,
+                        'size': file_size,
+                        'format': file_format
+                    })
+                    result['plugin_analysis'] = plugin_results
+                except Exception as e:
+                    result['plugin_analysis'] = {'error': f'Plugin analysis failed: {str(e)}'}
             
             self.analysis_cache[file_path] = result
             return result
