@@ -1,5 +1,5 @@
 """
-Simplified License Manager - No PyQt6 dependencies
+Simplified License Manager - Removed unnecessary complexity
 """
 
 from typing import Dict, Any
@@ -28,7 +28,3 @@ class SimpleLicenseManager:
     def is_feature_enabled(self, feature: str) -> bool:
         """Check if feature is enabled (all features enabled in open source)"""
         return True
-
-
-# Legacy compatibility
-LicenseManager = SimpleLicenseManager

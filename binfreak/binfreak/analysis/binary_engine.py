@@ -90,8 +90,14 @@ class BinaryAnalysisEngine:
             self.analysis_cache[file_path] = result
             return result
         
+        except FileNotFoundError:
+            return {'error': f'File not found: {file_path}', 'file_path': file_path}
+        except PermissionError:
+            return {'error': f'Permission denied: {file_path}', 'file_path': file_path}
+        except MemoryError:
+            return {'error': f'File too large to analyze: {file_path}', 'file_path': file_path}
         except Exception as e:
-            return {'error': str(e), 'file_path': file_path}
+            return {'error': f'Analysis failed: {str(e)}', 'file_path': file_path}
     
     def perform_disassembly(self, data: bytes, file_format: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Perform basic disassembly"""
@@ -131,7 +137,9 @@ class BinaryAnalysisEngine:
         except ImportError:
             # Fallback disassembly
             disassembly = self.basic_disassembly(data)
-        except Exception:
+        except Exception as e:
+            # Log the error and fallback
+            print(f"Disassembly error: {e}")
             disassembly = self.basic_disassembly(data)
         
         return disassembly
