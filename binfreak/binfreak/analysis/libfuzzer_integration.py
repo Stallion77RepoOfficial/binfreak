@@ -20,8 +20,8 @@ class LibFuzzerIntegration:
     """Professional fuzzing integration with libFuzzer"""
     
     def __init__(self, libfuzzer_path: Optional[str] = None):
-        self.libfuzzer_path = libfuzzer_path or self._find_libfuzzer()
         self.logger = logging.getLogger('LibFuzzer')
+        self.libfuzzer_path = libfuzzer_path or self._find_libfuzzer()
         self.current_session = None
         self.is_running = False
         
