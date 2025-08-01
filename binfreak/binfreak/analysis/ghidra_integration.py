@@ -17,8 +17,8 @@ class GhidraAnalyzer:
     """Professional binary analysis using Ghidra headless analyzer"""
     
     def __init__(self, ghidra_path: Optional[str] = None):
-        self.ghidra_path = ghidra_path or self._find_ghidra_installation()
         self.logger = logging.getLogger('GhidraAnalyzer')
+        self.ghidra_path = ghidra_path or self._find_ghidra_installation()
         self.temp_dir = None
         self.analysis_cache = {}
         

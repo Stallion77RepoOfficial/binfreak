@@ -25,7 +25,12 @@ class BinaryAnalysisEngine:
     def _initialize_plugins(self):
         """Initialize the plugin system"""
         try:
-            from ..plugins.plugin_manager import PluginManager
+            # Try absolute imports first, then relative
+            try:
+                from binfreak.binfreak.plugins.plugin_manager import PluginManager
+            except ImportError:
+                from ..plugins.plugin_manager import PluginManager
+            
             self.plugin_manager = PluginManager()
             self.plugin_manager.load_all_plugins()
         except Exception as e:
@@ -35,8 +40,13 @@ class BinaryAnalysisEngine:
     def _initialize_advanced_analyzers(self):
         """Initialize advanced analysis tools (Ghidra, libFuzzer)"""
         try:
-            from .ghidra_integration import get_ghidra_analyzer
-            from .libfuzzer_integration import get_libfuzzer_integration
+            # Try absolute imports first, then relative
+            try:
+                from binfreak.binfreak.analysis.ghidra_integration import get_ghidra_analyzer
+                from binfreak.binfreak.analysis.libfuzzer_integration import get_libfuzzer_integration
+            except ImportError:
+                from .ghidra_integration import get_ghidra_analyzer
+                from .libfuzzer_integration import get_libfuzzer_integration
             
             self.ghidra_analyzer = get_ghidra_analyzer()
             self.libfuzzer_integration = get_libfuzzer_integration()
