@@ -1,5 +1,5 @@
 """
-Binary Analysis Engine - Core binary analysis functionality
+Binary Analysis Engine - Core binary analysis functionality with professional features
 """
 
 import os
@@ -12,12 +12,15 @@ from typing import Dict, Any, List, Optional, Tuple
 
 
 class BinaryAnalysisEngine:
-    """Core binary analysis functionality"""
+    """Core binary analysis functionality with professional-grade capabilities"""
     
     def __init__(self):
         self.analysis_cache = {}
         self.plugin_manager = None
+        self.ghidra_analyzer = None
+        self.libfuzzer_integration = None
         self._initialize_plugins()
+        self._initialize_advanced_analyzers()
     
     def _initialize_plugins(self):
         """Initialize the plugin system"""
@@ -29,8 +32,33 @@ class BinaryAnalysisEngine:
             print(f"Plugin system initialization failed: {e}")
             self.plugin_manager = None
     
+    def _initialize_advanced_analyzers(self):
+        """Initialize advanced analysis tools (Ghidra, libFuzzer)"""
+        try:
+            from .ghidra_integration import get_ghidra_analyzer
+            from .libfuzzer_integration import get_libfuzzer_integration
+            
+            self.ghidra_analyzer = get_ghidra_analyzer()
+            self.libfuzzer_integration = get_libfuzzer_integration()
+            
+            # Log availability
+            if self.ghidra_analyzer.is_available():
+                print("Ghidra integration available - advanced analysis enabled")
+            else:
+                print("Ghidra not available - using built-in analysis only")
+                
+            if self.libfuzzer_integration.is_available():
+                print("libFuzzer integration available - fuzzing capabilities enabled")
+            else:
+                print("libFuzzer not available - limited fuzzing capabilities")
+                
+        except Exception as e:
+            print(f"Advanced analyzer initialization failed: {e}")
+            self.ghidra_analyzer = None
+            self.libfuzzer_integration = None
+    
     def analyze_file(self, file_path: str) -> Dict[str, Any]:
-        """Comprehensive binary file analysis"""
+        """Comprehensive binary file analysis with professional features"""
         if file_path in self.analysis_cache:
             return self.analysis_cache[file_path]
         
@@ -54,7 +82,7 @@ class BinaryAnalysisEngine:
             entropy_calculator = EntropyCalculator()
             function_detector = FunctionDetector()
             
-            # Perform real analysis
+            # Perform core analysis
             file_format_str = format_detector.detect_format(data)
             file_format = {'type': file_format_str, 'arch': 'x86_64'}  # Create dict
             strings = string_extractor.extract_strings(data)
@@ -64,16 +92,17 @@ class BinaryAnalysisEngine:
             # Analyze sections based on format
             sections = self.analyze_sections(data, file_format)
             
-            # Real disassembly attempt
-            disassembly = self.perform_disassembly(data, file_format)
-            
-            analysis_time = time.time() - start_time
+            # Enhanced disassembly with professional tools
+            disassembly = self.perform_advanced_disassembly(data, file_format, file_path)
             
             # Code vs data ratio analysis
             code_analysis = self.analyze_code_sections(data, file_format, sections)
             
             # Entry point detection
             entry_point = self.find_entry_point(data, file_format)
+            
+            # Advanced analysis with Ghidra if available
+            ghidra_analysis = self.perform_ghidra_analysis(file_path) if self.ghidra_analyzer else {}
             
             # Calculate analysis statistics
             analysis_time = time.time() - start_time
@@ -88,6 +117,9 @@ class BinaryAnalysisEngine:
                 'functions': functions,
                 'sections': sections,
                 'disassembly': disassembly,
+                'code_analysis': code_analysis,
+                'entry_point': entry_point,
+                'ghidra_analysis': ghidra_analysis,
                 'analysis_time': datetime.now().isoformat(),
                 'analysis_duration': f"{analysis_time:.2f}s",
                 'statistics': {
@@ -95,7 +127,9 @@ class BinaryAnalysisEngine:
                     'total_strings': len(strings),
                     'total_sections': len(sections),
                     'file_size_mb': file_size / (1024 * 1024),
-                    'format_type': file_format.get('type', 'Unknown')
+                    'format_type': file_format.get('type', 'Unknown'),
+                    'advanced_analysis_available': self.ghidra_analyzer.is_available() if self.ghidra_analyzer else False,
+                    'fuzzing_available': self.libfuzzer_integration.is_available() if self.libfuzzer_integration else False
                 }
             }
             
@@ -122,6 +156,194 @@ class BinaryAnalysisEngine:
             return {'error': f'File too large to analyze: {file_path}', 'file_path': file_path}
         except Exception as e:
             return {'error': f'Analysis failed: {str(e)}', 'file_path': file_path}
+    
+    def perform_advanced_disassembly(self, data: bytes, file_format: Dict[str, Any], file_path: str) -> Dict[str, Any]:
+        """Perform advanced disassembly using both Capstone and Ghidra if available"""
+        disassembly_result = {
+            'capstone_disassembly': [],
+            'ghidra_disassembly': [],
+            'analysis_method': 'capstone_only'
+        }
+        
+        # Primary disassembly with Capstone
+        capstone_result = self.perform_disassembly(data, file_format)
+        disassembly_result['capstone_disassembly'] = capstone_result
+        
+        # Enhanced disassembly with Ghidra if available
+        if self.ghidra_analyzer and self.ghidra_analyzer.is_available():
+            try:
+                ghidra_result = self.ghidra_analyzer.analyze_binary(file_path, {
+                    'export_functions': True,
+                    'analyze_functions': True,
+                    'timeout': 60
+                })
+                
+                if ghidra_result.get('success'):
+                    disassembly_result['ghidra_disassembly'] = ghidra_result.get('functions', [])
+                    disassembly_result['analysis_method'] = 'capstone_and_ghidra'
+                    
+            except Exception as e:
+                print(f"Ghidra disassembly failed: {e}")
+                disassembly_result['ghidra_error'] = str(e)
+        
+        # Return the best available disassembly
+        if disassembly_result['ghidra_disassembly']:
+            return disassembly_result['ghidra_disassembly']
+        else:
+            return disassembly_result['capstone_disassembly']
+    
+    def perform_ghidra_analysis(self, file_path: str) -> Dict[str, Any]:
+        """Perform comprehensive analysis using Ghidra"""
+        if not self.ghidra_analyzer or not self.ghidra_analyzer.is_available():
+            return {'available': False, 'error': 'Ghidra not available'}
+        
+        try:
+            result = self.ghidra_analyzer.analyze_binary(file_path, {
+                'analyze_functions': True,
+                'export_xml': True,
+                'export_functions': True,
+                'timeout': 120
+            })
+            
+            if result.get('success'):
+                return {
+                    'available': True,
+                    'functions': result.get('functions', []),
+                    'symbols': result.get('symbols', []),
+                    'memory_layout': result.get('memory_layout', {}),
+                    'analysis_method': 'ghidra_headless'
+                }
+            else:
+                return {
+                    'available': True,
+                    'error': result.get('error', 'Ghidra analysis failed'),
+                    'details': result
+                }
+        
+        except Exception as e:
+            return {
+                'available': True,
+                'error': f'Ghidra analysis exception: {str(e)}'
+            }
+    
+    def start_fuzzing_session(self, file_path: str, fuzzing_options: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Start a fuzzing session on the binary"""
+        if not self.libfuzzer_integration or not self.libfuzzer_integration.is_available():
+            return {'error': 'libFuzzer not available', 'success': False}
+        
+        fuzzing_options = fuzzing_options or {}
+        
+        # Check if target is already compiled for fuzzing
+        if file_path.endswith('.c') or file_path.endswith('.cpp'):
+            # Source file - need to compile for fuzzing
+            return self._compile_and_fuzz_source(file_path, fuzzing_options)
+        else:
+            # Binary file - create harness and fuzz
+            return self._create_harness_and_fuzz(file_path, fuzzing_options)
+    
+    def _compile_and_fuzz_source(self, source_path: str, options: Dict[str, Any]) -> Dict[str, Any]:
+        """Compile source file with fuzzing instrumentation and start fuzzing"""
+        try:
+            import tempfile
+            
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Compile target with fuzzing instrumentation
+                output_binary = os.path.join(temp_dir, 'fuzz_target')
+                
+                compile_result = self.libfuzzer_integration.prepare_target_for_fuzzing(
+                    [source_path],
+                    output_binary,
+                    options.get('compile_options', {})
+                )
+                
+                if not compile_result.get('success'):
+                    return compile_result
+                
+                # Create corpus directory
+                corpus_dir = os.path.join(temp_dir, 'corpus')
+                os.makedirs(corpus_dir, exist_ok=True)
+                
+                # Start fuzzing
+                return self.libfuzzer_integration.start_fuzzing_session(
+                    output_binary,
+                    corpus_dir,
+                    options.get('fuzzing_options', {})
+                )
+        
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    def _create_harness_and_fuzz(self, binary_path: str, options: Dict[str, Any]) -> Dict[str, Any]:
+        """Create fuzzing harness for existing binary and start fuzzing"""
+        try:
+            import tempfile
+            
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Create fuzzing harness
+                harness_file = os.path.join(temp_dir, 'fuzz_harness.cpp')
+                
+                harness_result = self.libfuzzer_integration.create_fuzzing_harness(
+                    options.get('harness_type', 'basic_file'),
+                    harness_file,
+                    options.get('target_function')
+                )
+                
+                if not harness_result.get('success'):
+                    return harness_result
+                
+                # Compile harness
+                output_binary = os.path.join(temp_dir, 'fuzz_target')
+                
+                compile_result = self.libfuzzer_integration.prepare_target_for_fuzzing(
+                    [harness_file],
+                    output_binary,
+                    options.get('compile_options', {})
+                )
+                
+                if not compile_result.get('success'):
+                    return compile_result
+                
+                # Create corpus directory
+                corpus_dir = os.path.join(temp_dir, 'corpus')
+                os.makedirs(corpus_dir, exist_ok=True)
+                
+                # Add initial corpus from binary
+                with open(binary_path, 'rb') as f:
+                    sample_data = f.read(1024)  # Use first 1KB as seed
+                
+                with open(os.path.join(corpus_dir, 'seed'), 'wb') as f:
+                    f.write(sample_data)
+                
+                # Start fuzzing
+                return self.libfuzzer_integration.start_fuzzing_session(
+                    output_binary,
+                    corpus_dir,
+                    options.get('fuzzing_options', {})
+                )
+        
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    def get_fuzzing_stats(self) -> Dict[str, Any]:
+        """Get current fuzzing statistics"""
+        if not self.libfuzzer_integration:
+            return {'error': 'libFuzzer not available'}
+        
+        return self.libfuzzer_integration.get_fuzzing_stats()
+    
+    def stop_fuzzing(self) -> Dict[str, Any]:
+        """Stop current fuzzing session"""
+        if not self.libfuzzer_integration:
+            return {'error': 'libFuzzer not available'}
+        
+        return self.libfuzzer_integration.stop_fuzzing_session()
+    
+    def generate_control_flow_graph(self, file_path: str, function_address: str) -> Dict[str, Any]:
+        """Generate control flow graph for a specific function"""
+        if not self.ghidra_analyzer or not self.ghidra_analyzer.is_available():
+            return {'error': 'Ghidra not available for CFG generation'}
+        
+        return self.ghidra_analyzer.generate_control_flow_graph(file_path, function_address)
     
     def perform_disassembly(self, data: bytes, file_format: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Perform disassembly with proper code section detection"""

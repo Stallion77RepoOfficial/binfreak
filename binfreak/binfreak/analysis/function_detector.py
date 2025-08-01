@@ -3,7 +3,7 @@ Function detection module for binary analysis
 """
 
 import struct
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 
 
 class FunctionDetector:
@@ -179,33 +179,18 @@ class FunctionDetector:
         return min(100, max_search)  # Default size
     
     def pattern_based_function_detection(self, data: bytes) -> List[Dict[str, Any]]:
-        """Enhanced pattern-based function detection with better heuristics"""
+        """Enhanced pattern-based function detection with dynamic analysis"""
         functions = []
         
-        # Enhanced function prologues for different architectures
-        prologues = [
-            # x64 prologues
-            (b'\x55\x48\x89\xe5', 'x64_standard'),      # push rbp; mov rbp, rsp
-            (b'\x48\x83\xec', 'x64_stack_alloc'),       # sub rsp, imm
-            (b'\x48\x89\xe5', 'x64_frame_setup'),       # mov rbp, rsp
-            (b'\xf3\x0f\x1e\xfa', 'x64_endbr64'),       # endbr64 (CET)
-            (b'\x48\x83\xc4', 'x64_stack_cleanup'),     # add rsp, imm
-            
-            # x86 prologues  
-            (b'\x55\x89\xe5', 'x86_standard'),          # push ebp; mov ebp, esp
-            (b'\x83\xec', 'x86_stack_alloc'),           # sub esp, imm
-            (b'\x89\xe5', 'x86_frame_setup'),           # mov ebp, esp
-            (b'\x83\xc4', 'x86_stack_cleanup'),         # add esp, imm
-            
-            # ARM prologues
-            (b'\x00\x48\x2d\xe9', 'arm_push_lr'),       # push {lr}
-            (b'\x10\x48\x2d\xe9', 'arm_push_regs'),     # push {r4, lr}
-            
-            # Function call patterns
-            (b'\xe8', 'x86_call_rel'),                   # call rel32
-            (b'\xff\x15', 'x86_call_indirect'),         # call dword ptr
-            (b'\x48\xff\x15', 'x64_call_indirect'),     # call qword ptr
-        ]
+        # Use dynamic pattern analysis instead of hardcoded patterns
+        dynamic_patterns = self._analyze_instruction_patterns(data)
+        
+        # Enhanced function prologues dynamically detected
+        prologues = dynamic_patterns.get('prologues', [])
+        
+        # Add commonly found patterns if none detected
+        if not prologues:
+            prologues = self._get_fallback_patterns(data)
         
         # Pattern-based detection with confidence scoring
         potential_functions = {}
@@ -252,6 +237,120 @@ class FunctionDetector:
             unique_functions = self._heuristic_function_detection(data)
         
         return unique_functions[:1000]  # Limit to prevent UI overload
+    
+    def _analyze_instruction_patterns(self, data: bytes) -> Dict[str, Any]:
+        """Dynamically analyze instruction patterns in the binary"""
+        patterns = {'prologues': [], 'epilogues': [], 'calls': []}
+        
+        # Analyze byte frequency to identify potential instruction patterns
+        byte_frequencies = self._calculate_byte_frequencies(data)
+        
+        # Look for sequences that appear frequently (potential instructions)
+        for i in range(len(data) - 4):
+            if i % 1000 == 0:  # Sample every 1000 bytes for performance
+                sequence = data[i:i+4]
+                if self._looks_like_instruction_sequence(sequence, byte_frequencies):
+                    pattern_type = self._classify_sequence_type(sequence)
+                    if pattern_type == 'prologue':
+                        patterns['prologues'].append((sequence, f'dynamic_{i:x}'))
+                    elif pattern_type == 'epilogue':
+                        patterns['epilogues'].append((sequence, f'epilogue_{i:x}'))
+        
+        return patterns
+    
+    def _calculate_byte_frequencies(self, data: bytes) -> Dict[int, int]:
+        """Calculate byte frequency distribution"""
+        frequencies = {}
+        for byte in data:
+            frequencies[byte] = frequencies.get(byte, 0) + 1
+        return frequencies
+    
+    def _looks_like_instruction_sequence(self, sequence: bytes, frequencies: Dict[int, int]) -> bool:
+        """Check if sequence looks like valid instructions based on frequency analysis"""
+        if len(sequence) < 2:
+            return False
+        
+        # Common instruction bytes should have reasonable frequency
+        first_byte = sequence[0]
+        
+        # Check if first byte is commonly used in instructions
+        common_opcodes = {0x48, 0x49, 0x55, 0x89, 0x8b, 0xe8, 0xe9, 0x83, 0x81, 0xc3}
+        if first_byte in common_opcodes:
+            return True
+        
+        # Check frequency-based heuristics
+        total_bytes = sum(frequencies.values())
+        byte_frequency = frequencies.get(first_byte, 0) / total_bytes
+        
+        # Instructions typically have moderate frequency (not too rare, not too common)
+        return 0.001 < byte_frequency < 0.1
+    
+    def _classify_sequence_type(self, sequence: bytes) -> str:
+        """Classify sequence as prologue, epilogue, or other"""
+        if len(sequence) < 2:
+            return 'other'
+        
+        # Prologue patterns
+        if sequence[0] == 0x55:  # push rbp/ebp
+            return 'prologue'
+        if sequence[:2] == b'\x48\x89':  # mov (x64)
+            return 'prologue'
+        
+        # Epilogue patterns
+        if sequence[0] == 0xc3:  # ret
+            return 'epilogue'
+        if sequence[0] == 0x5d:  # pop rbp/ebp
+            return 'epilogue'
+        
+        return 'other'
+    
+    def _get_fallback_patterns(self, data: bytes) -> List[Tuple[bytes, str]]:
+        """Get fallback patterns when dynamic analysis fails"""
+        # Detect architecture from binary format
+        arch = self._detect_architecture(data)
+        
+        if arch == 'x86_64':
+            return [
+                (b'\x55\x48\x89\xe5', 'x64_standard'),
+                (b'\x48\x83\xec', 'x64_stack_alloc'),
+                (b'\xf3\x0f\x1e\xfa', 'x64_endbr64'),
+            ]
+        elif arch == 'x86':
+            return [
+                (b'\x55\x89\xe5', 'x86_standard'),
+                (b'\x83\xec', 'x86_stack_alloc'),
+            ]
+        elif arch == 'arm64':
+            return [
+                (b'\xfd\x7b\xbf\xa9', 'arm64_standard'),
+                (b'\xfd\x03\x00\x91', 'arm64_frame'),
+            ]
+        else:
+            # Mixed patterns for unknown architecture
+            return [
+                (b'\x55\x48\x89\xe5', 'x64_standard'),
+                (b'\x55\x89\xe5', 'x86_standard'),
+                (b'\xe8', 'call_instruction'),
+            ]
+    
+    def _detect_architecture(self, data: bytes) -> str:
+        """Detect binary architecture from format"""
+        if data.startswith(b'\x7fELF'):
+            # ELF format
+            if len(data) > 4:
+                ei_class = data[4]
+                return 'x86_64' if ei_class == 2 else 'x86'
+        elif data.startswith(b'MZ'):
+            # PE format - assume x86_64 for modern Windows
+            return 'x86_64'
+        elif len(data) > 4:
+            magic = int.from_bytes(data[0:4], 'little')
+            if magic in [0xfeedfacf, 0xcffaedfe]:  # Mach-O 64-bit
+                return 'x86_64'
+            elif magic in [0xfeedface, 0xcefaedfe]:  # Mach-O 32-bit
+                return 'x86'
+        
+        return 'unknown'
     
     def _calculate_function_confidence(self, data: bytes, pos: int) -> float:
         """Calculate confidence score for a potential function start"""
