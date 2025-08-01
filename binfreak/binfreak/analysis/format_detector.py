@@ -52,6 +52,16 @@ class FormatDetector:
         if other_result:
             return other_result
         
+        # Firmware and embedded formats
+        firmware_result = self._analyze_firmware_formats(data)
+        if firmware_result:
+            return firmware_result
+        
+        # Mobile and platform-specific formats
+        mobile_result = self._analyze_mobile_formats(data)
+        if mobile_result:
+            return mobile_result
+        
         # Fallback analysis
         return self._fallback_analysis(data)
     
@@ -162,3 +172,84 @@ class FormatDetector:
             pass
         
         return f'Unknown binary (entropy: {entropy:.2f})'
+    
+    def _analyze_firmware_formats(self, data: bytes) -> str:
+        """Detect firmware and embedded binary formats"""
+        # Intel HEX format
+        if data.startswith(b':') and b'\n' in data[:50]:
+            return 'Intel HEX firmware'
+        
+        # Motorola S-record
+        if data.startswith(b'S') and len(data) > 10:
+            if data[1] in b'0123456789':
+                return 'Motorola S-record firmware'
+        
+        # Binary firmware patterns
+        if len(data) >= 16:
+            # Check for ARM vector table (common in firmware)
+            if self._looks_like_arm_vector_table(data):
+                return 'ARM firmware (vector table detected)'
+            
+            # Check for MIPS firmware
+            if data.startswith(b'\x3c\x1c') or data.startswith(b'\x1c\x3c'):
+                return 'MIPS firmware'
+            
+            # Check for bootloader patterns
+            if b'BOOTLOADER' in data[:1024] or b'U-Boot' in data[:1024]:
+                return 'Bootloader firmware'
+        
+        return None
+    
+    def _analyze_mobile_formats(self, data: bytes) -> str:
+        """Detect mobile platform specific formats"""
+        # Android DEX
+        if data.startswith(b'dex\n') and len(data) > 8:
+            version = data[4:7].decode('ascii', errors='ignore')
+            return f'Android DEX (version {version})'
+        
+        # Android ODEX
+        if data.startswith(b'dey\n'):
+            return 'Android ODEX'
+        
+        # iOS specific formats
+        if len(data) > 16:
+            # iOS dyld shared cache
+            if b'dyld_v1' in data[:50] or b'dyld_shared_cache' in data[:100]:
+                return 'iOS dyld shared cache'
+            
+            # iOS kernelcache
+            if b'kernelcache' in data[:100] or b'__PRELINK_TEXT' in data[:1000]:
+                return 'iOS kernelcache'
+        
+        # Windows Phone XAP
+        if data.startswith(b'PK') and b'WMAppManifest.xml' in data[:2048]:
+            return 'Windows Phone XAP'
+        
+        return None
+    
+    def _looks_like_arm_vector_table(self, data: bytes) -> bool:
+        """Check if data starts with ARM vector table"""
+        if len(data) < 32:
+            return False
+        
+        # ARM vector table typically has stack pointer in first 4 bytes
+        # followed by reset vector, then other exception vectors
+        try:
+            vectors = [struct.unpack('<I', data[i:i+4])[0] for i in range(0, 32, 4)]
+            
+            # Stack pointer should be in reasonable range
+            sp = vectors[0]
+            if not (0x20000000 <= sp <= 0x20100000):  # Common ARM Cortex-M range
+                return False
+            
+            # Reset vector should have Thumb bit set (odd address)
+            reset_vector = vectors[1]
+            if reset_vector % 2 == 0:
+                return False
+            
+            # Other vectors should be in reasonable code range
+            valid_vectors = sum(1 for v in vectors[2:] if 0x08000000 <= v <= 0x08100000 or v % 2 == 1)
+            return valid_vectors >= 4
+            
+        except:
+            return False
