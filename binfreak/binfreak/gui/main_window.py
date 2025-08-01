@@ -95,73 +95,16 @@ class SimplifiedMainWindow(QMainWindow):
         if license_info['status'] == 'Licensed':
             status_text += f" (expires: {license_info.get('expiry', 'unknown')})"
         
-        status_text += " | Navigation: ← → arrows, Ctrl+← Ctrl+→, Tab/Shift+Tab"
-        
         self.status_bar.showMessage(status_text)
     
     def setup_keyboard_shortcuts(self):
-        """Setup keyboard shortcuts"""
-        from PyQt6.QtGui import QShortcut, QKeySequence
-        from PyQt6.QtCore import Qt
-        
-        # Global shortcuts that work regardless of focus
-        self.right_shortcut = QShortcut(QKeySequence("Ctrl+Right"), self)
-        self.right_shortcut.activated.connect(self.next_left_tab)
-        
-        self.left_shortcut = QShortcut(QKeySequence("Ctrl+Left"), self)
-        self.left_shortcut.activated.connect(self.prev_left_tab)
-        
-        # Alternative shortcuts
-        self.tab_shortcut = QShortcut(QKeySequence("Tab"), self)
-        self.tab_shortcut.activated.connect(self.next_left_tab)
-        
-        self.shift_tab_shortcut = QShortcut(QKeySequence("Shift+Tab"), self)
-        self.shift_tab_shortcut.activated.connect(self.prev_left_tab)
+        """Setup keyboard shortcuts - removed navigation arrows"""
+        pass
     
     def keyPressEvent(self, event):
         """Handle key press events"""
-        from PyQt6.QtCore import Qt
-        
-        # Only handle arrows when left panel has focus or no other widget is focused
-        if event.key() == Qt.Key.Key_Right:
-            self.next_left_tab()
-            event.accept()
-            return
-        elif event.key() == Qt.Key.Key_Left:
-            self.prev_left_tab()
-            event.accept()
-            return
-        
-        # Pass other keys to parent
+        # Pass all keys to parent - no custom navigation
         super().keyPressEvent(event)
-    
-    def next_left_tab(self):
-        """Move to next tab in left panel"""
-        try:
-            if hasattr(self, 'left_tabs') and self.left_tabs:
-                current = self.left_tabs.currentIndex()
-                next_index = (current + 1) % self.left_tabs.count()
-                self.left_tabs.setCurrentIndex(next_index)
-                tab_name = self.left_tabs.tabText(next_index)
-                self.log(f"→ Switched to: {tab_name}")
-            else:
-                self.log("Left tabs not available yet")
-        except Exception as e:
-            self.log(f"Error switching tab: {e}")
-    
-    def prev_left_tab(self):
-        """Move to previous tab in left panel"""
-        try:
-            if hasattr(self, 'left_tabs') and self.left_tabs:
-                current = self.left_tabs.currentIndex()
-                prev_index = (current - 1) % self.left_tabs.count()
-                self.left_tabs.setCurrentIndex(prev_index)
-                tab_name = self.left_tabs.tabText(prev_index)
-                self.log(f"← Switched to: {tab_name}")
-            else:
-                self.log("Left tabs not available yet")
-        except Exception as e:
-            self.log(f"Error switching tab: {e}")
     
     def show_registration_dialog(self):
         """Show license information for open source version"""
@@ -190,10 +133,13 @@ class SimplifiedMainWindow(QMainWindow):
                          "Features:\n"
                          "• Binary format detection\n"
                          "• String extraction\n" 
-                         "• Function analysis\n"
-                         "• Disassembly engine\n"
-                         "• Entropy visualization\n"
-                         "• Fuzzing capabilities")
+                         "• Advanced disassembly engine\n"
+                         "• Professional decompiler\n"
+                         "• Interactive call graph visualization\n"
+                         "• Entropy analysis\n"
+                         "• Fuzzing capabilities\n\n"
+                         "Enhanced with IDA Pro style interface and\n"
+                         "realistic decompilation output.")
     
     def open_file(self):
         """Open binary file for analysis"""
@@ -201,7 +147,7 @@ class SimplifiedMainWindow(QMainWindow):
             self, "Open Binary File", "", "All Files (*)")
         
         if file_path:
-            self.log(f"Loading file: {file_path}")
+            # Removed excessive logging - only log completion
             self.start_analysis_worker(file_path)
     
     def start_analysis_worker(self, file_path: str):
@@ -227,6 +173,10 @@ class SimplifiedMainWindow(QMainWindow):
         # Update UI with analysis results
         self.ui_components.update_analysis_results(result)
         self.tab_manager.update_tabs_with_results(result)
+        
+        # Store binary data for detailed analysis
+        if 'file_data' in result:
+            self.current_binary_data = result['file_data']
         
         # Update visualization if available
         if hasattr(self, 'visualization_tab'):
@@ -278,8 +228,8 @@ class SimplifiedMainWindow(QMainWindow):
             return
         
         # Initialize fuzzing engine
-        from ..analysis.fuzzing_engine import FuzzingEngine
-        self.fuzzing_engine = FuzzingEngine()
+        from ..analysis.fuzzing_engine import IndustrialFuzzingEngine
+        self.fuzzing_engine = IndustrialFuzzingEngine()
         
         # Start fuzzing
         parameters = {
@@ -324,29 +274,11 @@ class SimplifiedMainWindow(QMainWindow):
             # Update stats text
             stats_text = f"""
 Running: {stats['running']}
-Test Cases: {stats['test_cases']:,}
+Test Cases: {stats['total_execs']:,}
 Crashes Found: {stats['crashes']}
 Unique Crashes: {stats['unique_crashes']}
-Executions/sec: {stats['exec_per_sec']:,}
+Executions/sec: {stats['executions_per_sec']:,}
 Corpus Size: {stats['corpus_size']}
             """.strip()
             
             self.fuzz_stats.setText(stats_text)
-            
-            # Update crash table
-            self.update_crash_table(stats['crash_details'])
-    
-    def update_crash_table(self, crashes):
-        """Update crash results table"""
-        self.crash_table.setRowCount(len(crashes))
-        
-        for i, crash in enumerate(crashes):
-            self.crash_table.setItem(i, 0, QTableWidgetItem(str(crash['crash_id'])))
-            self.crash_table.setItem(i, 1, QTableWidgetItem(crash['timestamp']))
-            self.crash_table.setItem(i, 2, QTableWidgetItem(str(crash['signal'])))
-            self.crash_table.setItem(i, 3, QTableWidgetItem(str(crash['input_size'])))
-            self.crash_table.setItem(i, 4, QTableWidgetItem(crash['input_hash']))
-            
-            # Determine if exploitable
-            exploitable = "Likely" if crash['signal'] in [11, 6, 4] else "Unknown"
-            self.crash_table.setItem(i, 5, QTableWidgetItem(exploitable))

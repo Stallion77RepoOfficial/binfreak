@@ -1,5 +1,18 @@
 """
-Advanced disassembly engine for binary analysis
+Advanced disassem        # Try to import capstone for professional disassembly
+        try:
+            import capstone as cs
+            self.capstone = cs
+            self.has_capstone = True
+            self.cs = None  # Will be set per function based on architecture
+            self.capstone_available = True
+            if not hasattr(AdvancedDisassemblyEngine, '_capstone_loaded'):
+                print("Capstone disassembly engine loaded successfully")
+                AdvancedDisassemblyEngine._capstone_loaded = True
+        except ImportError as e:
+            self.has_capstone = False
+            self.capstone_available = False
+            print(f"Capstone not available: {e}. Using fallback disassembler.")or binary analysis
 """
 
 import struct
@@ -26,7 +39,7 @@ class AdvancedDisassemblyEngine:
             self.has_capstone = True
             self.cs = None  # Will be set per function based on architecture
             self.capstone_available = True
-            print("Capstone disassembly engine loaded successfully")
+            # print("Capstone disassembly engine loaded successfully")  # Debug only
         except ImportError as e:
             self.has_capstone = False
             self.capstone_available = False

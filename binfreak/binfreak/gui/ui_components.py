@@ -161,38 +161,42 @@ class UIComponents:
         """Create center panel with tabs"""
         self.main_window.tab_widget = QTabWidget()
         
+        # Create tabs dictionary for easy access
+        self.main_window.tabs = {}
+        
         # Analysis tab
         self.main_window.analysis_tab = QTextEdit()
         self.main_window.analysis_tab.setFont(QFont("Monaco", 10))
         self.main_window.tab_widget.addTab(self.main_window.analysis_tab, "Analysis")
+        self.main_window.tabs["Analysis"] = self.main_window.analysis_tab
         
         # Strings tab
         self.main_window.strings_tab = QTableWidget()
         self.main_window.strings_tab.setColumnCount(2)
         self.main_window.strings_tab.setHorizontalHeaderLabels(["Offset", "String"])
         self.main_window.tab_widget.addTab(self.main_window.strings_tab, "Strings")
+        self.main_window.tabs["Strings"] = self.main_window.strings_tab
         
         # Disassembly tab
         self.main_window.disassembly_tab = QTextEdit()
         self.main_window.disassembly_tab.setFont(QFont("Monaco", 9))
         self.main_window.disassembly_tab.setStyleSheet("background-color: #1e1e1e; color: #ffffff;")
         self.main_window.tab_widget.addTab(self.main_window.disassembly_tab, "Disassembly")
+        self.main_window.tabs["Disassembly"] = self.main_window.disassembly_tab
         
-        # Functions tab
-        self.main_window.functions_tab = QTableWidget()
-        self.main_window.functions_tab.setColumnCount(4)
-        self.main_window.functions_tab.setHorizontalHeaderLabels(["Address", "Name", "Size", "Type"])
-        self.main_window.tab_widget.addTab(self.main_window.functions_tab, "Functions")
+
         
         # Fuzzing tab
         self.main_window.fuzzing_tab = self._create_fuzzing_tab()
         self.main_window.tab_widget.addTab(self.main_window.fuzzing_tab, "Fuzzing")
+        self.main_window.tabs["Fuzzing"] = self.main_window.fuzzing_tab
         
         # Visualization tab
         try:
-            from ..gui.visualization import AdvancedVisualizationWidget
-            self.main_window.visualization_tab = AdvancedVisualizationWidget()
+            from ..gui.visualization import ProfessionalVisualizationWidget
+            self.main_window.visualization_tab = ProfessionalVisualizationWidget()
             self.main_window.tab_widget.addTab(self.main_window.visualization_tab, "Visualization")
+            self.main_window.tabs["Visualization"] = self.main_window.visualization_tab
         except ImportError:
             pass
         
@@ -270,7 +274,11 @@ Modified: {modification_time}"""
             
             # Update function and symbol lists
             self._update_function_list(result)
-            self._update_symbol_list(result)
+            if hasattr(self, '_update_symbol_list'):
+                self._update_symbol_list(result)
+            else:
+                # Update symbols using existing method
+                self._update_symbols_list(result)
             
             # Update properties
             self._update_properties(result)
@@ -280,34 +288,6 @@ Modified: {modification_time}"""
             self.main_window.file_info.setPlainText(error_text)
             if hasattr(self.main_window, 'log'):
                 self.main_window.log(f"UI update error: {e}")
-        self.main_window.analysis_tab.setPlainText(analysis_text)
-        
-        # Update strings tab
-        self.main_window.strings_tab.setRowCount(len(result['strings']))
-        for i, string in enumerate(result['strings']):
-            self.main_window.strings_tab.setItem(i, 0, QTableWidgetItem(str(i)))
-            self.main_window.strings_tab.setItem(i, 1, QTableWidgetItem(string))
-        
-        # Update function list
-        self.main_window.function_list.clear()
-        for func in result['functions']:
-            func_size = "~100 bytes"  # Simplified estimation
-            
-            item = QTreeWidgetItem([
-                func.get('address', ''),
-                func.get('name', ''),
-                func.get('type', ''),
-                func_size
-            ])
-            self.main_window.function_list.addTopLevelItem(item)
-        
-        # Update symbols, imports, exports lists
-        self._update_symbols_list(result)
-        self._update_imports_list(result)
-        self._update_exports_list(result)
-        
-        # Update properties
-        self._update_properties(result)
     
     def _get_architecture_info(self, result: Dict[str, Any]) -> str:
         """Get architecture information from format"""
@@ -481,6 +461,18 @@ File Size: {result.get('file_size', 0):,} bytes"""
         
         layout.addWidget(controls_group)
         
+        # Statistics
+        stats_group = QGroupBox("Statistics")
+        stats_layout = QVBoxLayout(stats_group)
+        
+        self.main_window.fuzz_stats = QTextEdit()
+        self.main_window.fuzz_stats.setReadOnly(True)
+        self.main_window.fuzz_stats.setMaximumHeight(120)
+        self.main_window.fuzz_stats.setPlaceholderText("Fuzzing statistics will appear here...")
+        stats_layout.addWidget(self.main_window.fuzz_stats)
+        
+        layout.addWidget(stats_group)
+        
         # Results
         results_group = QGroupBox("Fuzzing Results")
         results_layout = QVBoxLayout(results_group)
@@ -497,5 +489,57 @@ File Size: {result.get('file_size', 0):,} bytes"""
         """Handle tab change to maintain focus"""
         if hasattr(self.main_window, 'left_tabs'):
             self.main_window.left_tabs.setFocus()
-            tab_name = self.main_window.left_tabs.tabText(index)
-            self.main_window.log(f"Tab changed to: {tab_name} (Use ← → arrows to navigate)")
+            # Removed excessive logging - only log important events
+
+    def _update_strings_tab(self, result: Dict[str, Any]):
+        """Update strings tab with extracted strings"""
+        try:
+            strings = result.get('strings', [])
+            self.main_window.strings_tab.setRowCount(len(strings))
+            self.main_window.strings_tab.setColumnCount(3)
+            self.main_window.strings_tab.setHorizontalHeaderLabels(['Index', 'Address', 'String'])
+            
+            for i, string_data in enumerate(strings):
+                if isinstance(string_data, dict):
+                    # If string data has address info
+                    address = string_data.get('address', 'N/A')
+                    string_val = string_data.get('string', str(string_data))
+                else:
+                    # If it's just a string
+                    address = 'N/A'
+                    string_val = str(string_data)
+                
+                self.main_window.strings_tab.setItem(i, 0, QTableWidgetItem(str(i)))
+                self.main_window.strings_tab.setItem(i, 1, QTableWidgetItem(str(address)))
+                self.main_window.strings_tab.setItem(i, 2, QTableWidgetItem(string_val))
+        except Exception as e:
+            self.main_window.log(f"Error updating strings tab: {e}")
+
+    def _update_function_list(self, result: Dict[str, Any]):
+        """Update function list with detected functions"""
+        try:
+            self.main_window.function_list.clear()
+            functions = result.get('functions', [])
+            
+            for func in functions:
+                if isinstance(func, dict):
+                    address = func.get('address', 'N/A')
+                    name = func.get('name', 'Unknown')
+                    func_type = func.get('type', 'function')
+                    size = func.get('size', 'Unknown')
+                else:
+                    # Handle simple function format
+                    address = str(func)
+                    name = f"func_{address}"
+                    func_type = 'function'
+                    size = 'Unknown'
+                
+                item = QTreeWidgetItem([
+                    str(address),
+                    str(name),
+                    str(func_type),
+                    str(size)
+                ])
+                self.main_window.function_list.addTopLevelItem(item)
+        except Exception as e:
+            self.main_window.log(f"Error updating function list: {e}")

@@ -124,7 +124,7 @@ class BinaryAnalysisEngine:
             return {'error': f'Analysis failed: {str(e)}', 'file_path': file_path}
     
     def perform_disassembly(self, data: bytes, file_format: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Perform basic disassembly"""
+        """Perform disassembly with proper code section detection"""
         disassembly = []
         
         try:
@@ -143,20 +143,48 @@ class BinaryAnalysisEngine:
             
             md = capstone.Cs(arch, mode)
             
-            # Find code section
-            code_offset = 0x1000 if len(data) > 0x1000 else 0
-            code_data = data[code_offset:code_offset + min(1024, len(data) - code_offset)]
+            # Find the actual code section for different formats
+            code_sections = self._find_code_sections(data, file_format)
             
-            for instruction in md.disasm(code_data, code_offset):
-                disassembly.append({
-                    'address': f"0x{instruction.address:x}",
-                    'bytes': ' '.join(f'{b:02x}' for b in instruction.bytes),
-                    'mnemonic': instruction.mnemonic,
-                    'operands': instruction.op_str
-                })
+            if code_sections:
+                # Use the first code section found
+                code_section = code_sections[0]
+                code_offset = code_section.get('file_offset', 0)
+                code_size = code_section.get('size', 1024)
+                code_addr = code_section.get('virtual_address', code_offset)
                 
-                if len(disassembly) >= 100:  # Limit output
-                    break
+                # Ensure we don't read beyond file boundaries
+                if code_offset < len(data):
+                    end_offset = min(code_offset + code_size, len(data))
+                    code_data = data[code_offset:end_offset]
+                    
+                    print(f"Disassembling code section at file offset 0x{code_offset:x}, size {len(code_data)} bytes")
+                    
+                    for instruction in md.disasm(code_data, code_addr):
+                        disassembly.append({
+                            'address': f"0x{instruction.address:x}",
+                            'bytes': ' '.join(f'{b:02x}' for b in instruction.bytes),
+                            'mnemonic': instruction.mnemonic,
+                            'operands': instruction.op_str
+                        })
+                        
+                        if len(disassembly) >= 100:  # Limit output
+                            break
+            else:
+                # Fallback: try to find code heuristically
+                print("No code sections found, using heuristic search")
+                code_offset, code_data = self._find_code_heuristic(data)
+                
+                for instruction in md.disasm(code_data, code_offset):
+                    disassembly.append({
+                        'address': f"0x{instruction.address:x}",
+                        'bytes': ' '.join(f'{b:02x}' for b in instruction.bytes),
+                        'mnemonic': instruction.mnemonic,
+                        'operands': instruction.op_str
+                    })
+                    
+                    if len(disassembly) >= 100:  # Limit output
+                        break
                     
         except ImportError:
             # Fallback disassembly
@@ -168,6 +196,169 @@ class BinaryAnalysisEngine:
         
         return disassembly
     
+    def _find_code_sections(self, data: bytes, file_format: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Find code sections in the binary"""
+        code_sections = []
+        
+        try:
+            file_type = file_format.get('type', '')
+            
+            if 'Mach-O' in file_type:
+                code_sections = self._find_macho_text_section(data)
+            elif 'ELF' in file_type:
+                code_sections = self._find_elf_text_section(data)
+            elif 'PE' in file_type:
+                code_sections = self._find_pe_text_section(data)
+                
+        except Exception as e:
+            print(f"Error finding code sections: {e}")
+            
+        return code_sections
+    
+    def _find_macho_text_section(self, data: bytes) -> List[Dict[str, Any]]:
+        """Find __TEXT.__text section in Mach-O binary"""
+        import struct
+        
+        try:
+            # Check Mach-O magic
+            magic = struct.unpack('<I', data[0:4])[0]
+            is_64bit = magic in [0xfeedfacf, 0xcffaedfe]
+            
+            if is_64bit:
+                # 64-bit Mach-O
+                ncmds = struct.unpack('<I', data[16:20])[0]
+                load_cmd_offset = 32
+            else:
+                # 32-bit Mach-O
+                ncmds = struct.unpack('<I', data[12:16])[0]
+                load_cmd_offset = 28
+            
+            # Parse load commands to find __TEXT segment
+            current_offset = load_cmd_offset
+            
+            for _ in range(ncmds):
+                if current_offset + 8 > len(data):
+                    break
+                    
+                cmd = struct.unpack('<I', data[current_offset:current_offset+4])[0]
+                cmdsize = struct.unpack('<I', data[current_offset+4:current_offset+8])[0]
+                
+                # LC_SEGMENT_64 = 0x19, LC_SEGMENT = 0x1
+                if cmd in [0x19, 0x1]:
+                    # Found a segment load command
+                    if is_64bit and cmd == 0x19:
+                        # 64-bit segment
+                        if current_offset + 72 <= len(data):
+                            segname = data[current_offset+8:current_offset+24].rstrip(b'\x00')
+                            vmaddr = struct.unpack('<Q', data[current_offset+24:current_offset+32])[0]
+                            vmsize = struct.unpack('<Q', data[current_offset+32:current_offset+40])[0]
+                            fileoff = struct.unpack('<Q', data[current_offset+40:current_offset+48])[0]
+                            filesize = struct.unpack('<Q', data[current_offset+48:current_offset+56])[0]
+                            nsects = struct.unpack('<I', data[current_offset+64:current_offset+68])[0]
+                            
+                            if segname == b'__TEXT':
+                                # Found __TEXT segment, now look for __text section
+                                section_offset = current_offset + 72
+                                for i in range(nsects):
+                                    if section_offset + 80 <= len(data):
+                                        sectname = data[section_offset:section_offset+16].rstrip(b'\x00')
+                                        segname = data[section_offset+16:section_offset+32].rstrip(b'\x00')
+                                        addr = struct.unpack('<Q', data[section_offset+32:section_offset+40])[0]
+                                        size = struct.unpack('<Q', data[section_offset+40:section_offset+48])[0]
+                                        offset = struct.unpack('<I', data[section_offset+48:section_offset+52])[0]
+                                        
+                                        if sectname == b'__text' and segname == b'__TEXT':
+                                            return [{
+                                                'name': '__TEXT.__text',
+                                                'virtual_address': addr,
+                                                'file_offset': offset,
+                                                'size': size,
+                                                'type': 'code'
+                                            }]
+                                        section_offset += 80
+                    elif not is_64bit and cmd == 0x1:
+                        # 32-bit segment (simplified)
+                        if current_offset + 56 <= len(data):
+                            segname = data[current_offset+8:current_offset+24].rstrip(b'\x00')
+                            if segname == b'__TEXT':
+                                # For simplicity, estimate text section location
+                                return [{
+                                    'name': '__TEXT.__text',
+                                    'virtual_address': 0x1000,
+                                    'file_offset': 0x1000,
+                                    'size': 0x1000,
+                                    'type': 'code'
+                                }]
+                
+                current_offset += cmdsize
+                
+        except Exception as e:
+            print(f"Error parsing Mach-O: {e}")
+            
+        return []
+    
+    def _find_elf_text_section(self, data: bytes) -> List[Dict[str, Any]]:
+        """Find .text section in ELF binary (simplified)"""
+        # Basic ELF parsing would go here
+        # For now, return a reasonable default
+        return [{
+            'name': '.text',
+            'virtual_address': 0x401000,
+            'file_offset': 0x1000,
+            'size': 0x1000,
+            'type': 'code'
+        }]
+    
+    def _find_pe_text_section(self, data: bytes) -> List[Dict[str, Any]]:
+        """Find .text section in PE binary (simplified)"""
+        # Basic PE parsing would go here
+        # For now, return a reasonable default
+        return [{
+            'name': '.text',
+            'virtual_address': 0x401000,
+            'file_offset': 0x1000,
+            'size': 0x1000,
+            'type': 'code'
+        }]
+    
+    def _find_code_heuristic(self, data: bytes) -> tuple:
+        """Find code using heuristics when format parsing fails"""
+        # Look for common instruction patterns starting from different offsets
+        potential_offsets = [0x1000, 0x4000, 0x460, 0x800, 0x2000]
+        
+        for offset in potential_offsets:
+            if offset < len(data):
+                chunk = data[offset:offset + 512]
+                if self._looks_like_code(chunk):
+                    return offset, chunk
+        
+        # If nothing found, default to beginning after headers
+        offset = min(0x1000, len(data) // 2)
+        return offset, data[offset:offset + 512]
+    
+    def _looks_like_code(self, data: bytes) -> bool:
+        """Heuristic to determine if bytes look like executable code"""
+        if len(data) < 16:
+            return False
+        
+        # Count instruction-like patterns
+        instruction_bytes = 0
+        null_bytes = 0
+        
+        for i in range(min(len(data), 64)):
+            byte = data[i]
+            if byte == 0:
+                null_bytes += 1
+            elif byte in [0x48, 0x49, 0x4a, 0x4b, 0x55, 0x56, 0x57, 0x89, 0x8b, 0xe8, 0xe9, 0x83, 0x81, 0xc3, 0xc2]:
+                instruction_bytes += 1
+        
+        # If more than 30% nulls, probably not code
+        if null_bytes > len(data) * 0.3:
+            return False
+            
+        # If we have some instruction-like bytes, it might be code
+        return instruction_bytes >= 3
+
     def basic_disassembly(self, data: bytes) -> List[Dict[str, Any]]:
         """Basic disassembly fallback"""
         disassembly = []

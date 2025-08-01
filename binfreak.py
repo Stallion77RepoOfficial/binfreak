@@ -8,8 +8,11 @@ import sys
 import os
 from pathlib import Path
 
-# Add the current directory to Python path for imports
-sys.path.insert(0, str(Path(__file__).parent / "binfreak"))
+# Ensure sys.path is clean and correctly configured
+sys.path = list(dict.fromkeys(sys.path))
+sys.path.insert(0, str(Path(__file__).parent))
+
+print("sys.path:", sys.path)
 
 def main():
     """Main application entry point"""
@@ -20,7 +23,7 @@ def main():
         print("Install with: pip install PyQt6")
         sys.exit(1)
 
-    from binfreak.gui.main_window import SimplifiedMainWindow
+    from binfreak.binfreak.gui.main_window import SimplifiedMainWindow
     
     app = QApplication(sys.argv)
     app.setApplicationName("BinFreak")
@@ -36,11 +39,10 @@ def main():
 
 def test_analysis(file_path: str):
     """Test the analysis engine without GUI"""
-    sys.path.insert(0, str(Path(__file__).parent / "binfreak"))
+    sys.path.insert(0, str(Path(__file__).parent))
     
     # Import only what we need for testing
-    sys.path.insert(0, str(Path(__file__).parent / "binfreak" / "binfreak"))
-    from analysis.binary_engine import BinaryAnalysisEngine
+    from binfreak.binfreak.analysis.binary_engine import BinaryAnalysisEngine
     
     engine = BinaryAnalysisEngine()
     result = engine.analyze_file(file_path)
