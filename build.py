@@ -36,6 +36,7 @@ def embed_binary_in_gui():
     
     # Encode binary as base64
     encoded_data = base64.b64encode(binary_data).decode('utf-8')
+    print(f"Binary size: {len(binary_data)} bytes, encoded: {len(encoded_data)} chars")
     
     # Read original GUI script
     if not os.path.exists("fuzzpro_gui.py"):
@@ -45,65 +46,62 @@ def embed_binary_in_gui():
     with open("fuzzpro_gui.py", "r") as f:
         gui_content = f.read()
     
-    # Add base64 import if not present
+    # Ensure base64 import is present
     if "import base64" not in gui_content:
         gui_content = gui_content.replace(
             "import tempfile",
             "import tempfile\nimport base64"
         )
     
-    # Add embedded binary data after imports
-    if "EMBEDDED_FUZZPRO_BINARY" not in gui_content:
-        # Find the right place to insert - after imports but before class definitions
-        insert_position = gui_content.find("class FuzzingWorker")
-        if insert_position == -1:
-            print("Could not find insertion point in GUI file")
-            return False
+    # Find insertion point after imports but before class definitions
+    insert_position = gui_content.find("class FuzzingWorker")
+    if insert_position == -1:
+        print("Could not find FuzzingWorker class in GUI file")
+        return False
+    
+    # Insert the embedded binary with proper formatting (always fresh start)
+    binary_line = f"\n# Embedded FuzzPro binary data (base64 encoded)\nEMBEDDED_FUZZPRO_BINARY = base64.b64decode('{encoded_data}')\n\n"
+    gui_content = gui_content[:insert_position] + binary_line + gui_content[insert_position:]
+    print("Embedded binary data inserted into GUI code")
+    
+    # Add binary extraction method (always add fresh)
+    print("Adding binary extraction method...")
+    
+    # Find FuzzingWorker class __init__ method and add extraction method after it
+    init_method_end = gui_content.find("        self.is_running = True")
+    if init_method_end != -1:
+        # Find the next method definition or end of class
+        next_method = gui_content.find("\n    def ", init_method_end)
+        if next_method != -1:
+            extraction_method = '''
         
-        # Insert the embedded binary
-        binary_line = f"\n# Embedded FuzzPro binary data\nEMBEDDED_FUZZPRO_BINARY = base64.b64decode('{encoded_data}')\n\n"
-        gui_content = gui_content[:insert_position] + binary_line + gui_content[insert_position:]
-    
-    # Update FuzzingWorker to use embedded binary instead of system binary
-    # Replace "./fuzzpro" with extracted binary path
-    gui_content = gui_content.replace(
-        'cmd = ["./fuzzpro", "-i", str(self.iterations), self.target_binary]',
-        '''# Extract embedded binary to temp file
-        fuzzpro_path = self.extract_fuzzpro_binary()
-        cmd = [fuzzpro_path, "-i", str(self.iterations), self.target_binary]'''
-    )
-    
-    # Add binary extraction method to FuzzingWorker class
-    extraction_method = '''
     def extract_fuzzpro_binary(self):
         """Extract embedded FuzzPro binary to temporary file"""
         import tempfile
         import os
         
-        # Create temporary file
-        fd, temp_path = tempfile.mkstemp(suffix='_fuzzpro', prefix='tmp_')
-        
-        with os.fdopen(fd, 'wb') as f:
-            f.write(EMBEDDED_FUZZPRO_BINARY)
-        
-        os.chmod(temp_path, 0o755)  # Make executable
-        return temp_path
-        '''
-    
-    # Find FuzzingWorker class and add the method
-    class_start = gui_content.find("class FuzzingWorker")
-    if class_start != -1:
-        # Find the run method
-        run_method_start = gui_content.find("def run(self):", class_start)
-        if run_method_start != -1:
-            # Insert extraction method before run method
-            gui_content = gui_content[:run_method_start] + extraction_method + "\n    " + gui_content[run_method_start:]
+        try:
+            # Create temporary file
+            fd, temp_path = tempfile.mkstemp(suffix='_fuzzpro', prefix='tmp_')
+            
+            with os.fdopen(fd, 'wb') as f:
+                f.write(EMBEDDED_FUZZPRO_BINARY)
+            
+            os.chmod(temp_path, 0o755)  # Make executable
+            return temp_path
+        except Exception as e:
+            # Fallback to local binary if extraction fails
+            print(f"Failed to extract embedded binary: {e}")
+            return "./fuzzpro"
+'''
+            gui_content = gui_content[:next_method] + extraction_method + gui_content[next_method:]
+            print("Binary extraction method added")
     
     # Write the final app.py
     with open("app.py", "w") as f:
         f.write(gui_content)
     
-    print("Created app.py with embedded binary")
+    print("Successfully created app.py with embedded binary!")
     return True
 
 def create_macos_app():
@@ -111,28 +109,44 @@ def create_macos_app():
     print("Creating standalone macOS application...")
     
     if not os.path.exists("app.py"):
-        print("app.py not found! Run embed_binary_in_gui() first.")
+        print("app.py not found! Run 'python3 build.py embed' first.")
         return False
     
     # Install PyInstaller if needed
     try:
         import PyInstaller
+        print("PyInstaller found")
     except ImportError:
         print("Installing PyInstaller...")
         result = subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"])
         if result.returncode != 0:
             print("Failed to install PyInstaller")
             return False
+        print("PyInstaller installed successfully")
+    
+    # Clean previous builds
+    import shutil
+    if os.path.exists("dist"):
+        shutil.rmtree("dist")
+        print("Cleaned previous build")
+    if os.path.exists("build"):
+        shutil.rmtree("build")
+    if os.path.exists("FuzzPro.spec"):
+        os.remove("FuzzPro.spec")
     
     # Create app bundle with PyInstaller
     cmd = [
         sys.executable, "-m", "PyInstaller",
-        "--onedir",
-        "--windowed",
-        "--clean",
-        "--name", "FuzzPro",
+        "--onedir",           # Create one directory with dependencies
+        "--windowed",         # No console window (GUI app)
+        "--clean",            # Clean PyInstaller cache
+        "--name", "FuzzPro",  # App name
+        "--add-data", "vulnerable_test:.",  # Include test binary if exists
         "app.py"
     ]
+    
+    print("Running PyInstaller...")
+    print(f"Command: {' '.join(cmd)}")
     
     result = subprocess.run(cmd)
     if result.returncode != 0:
@@ -140,7 +154,8 @@ def create_macos_app():
         return False
     
     print("Successfully created FuzzPro.app in dist/")
-    print("You can run it from dist/FuzzPro.app")
+    print("You can run it from: ./dist/FuzzPro.app/Contents/MacOS/FuzzPro")
+    print("Or double-click: dist/FuzzPro.app")
     return True
 
 def main():
